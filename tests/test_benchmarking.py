@@ -23,7 +23,8 @@ class Statistics(unittest.TestCase):
         result = bench.summarize(self.raw({'base': [1] * 29 + [10], 'other': [2] * 30}), ['base', 'other'])
         self.assertEqual(result['base']['medians'], dict(wall_time=1, cpu_time=2, max_rss_mib=3))
         self.assertEqual(result['base']['interval'], (1, 1))
-        self.assertEqual(result['other']['ratio'], (2, 2, 2))
+        self.assertEqual(result['other']['ratio'], 2)
+        self.assertIsNone(result['base']['ratio'])
         self.assertEqual(result['base']['outliers'], 1)
         self.assertTrue(result['base']['noisy'])
         self.assertIn('1 of 30 runs over 1.5× the median (max 10.000 s)', bench.noise_note('base', result['base']))
@@ -42,8 +43,11 @@ class Statistics(unittest.TestCase):
         values = [1, 2, 3, 4, 6]
         self.assertEqual(bench.median_interval(values), bench.median_interval(values))
         self.assertEqual(bench.median_interval(values), (1, 6))
-        self.assertEqual(bench.ratio_interval(values, [2, 3, 4, 5]),
-                         bench.ratio_interval(values, [2, 3, 4, 5]))
+
+    def test_time_text(self):
+        self.assertEqual(bench.time_text(0.15767, 0.00062), '157.7 ± 0.6 ms')
+        self.assertEqual(bench.time_text(5.8224, 0.11706), '5.822 ± 0.117 s')
+        self.assertEqual(bench.time_text(0.5, math.nan), '500.0 ± n/a ms')
 
     def test_invalid_and_singleton_samples(self):
         for value in [0, -1, math.nan, math.inf]:
@@ -93,18 +97,19 @@ Mean wall CIs use Python Student t.
             with contextlib.redirect_stdout(io.StringIO()):
                 bench.report_only(source, source / 'regen')
             md = (source / 'regen/report.md').read_text()
-            self.assertIn('1000.00 ± 0.00 [1000.00, 1000.00]', md)
-            self.assertIn('2.000 [2.000, 2.000]', md)
+            self.assertIn('| one | 1.000 ± 0.000 s | 2.000 ± 0.000 s (2.00×) |', md)
+            self.assertNotIn('[', md.split('## one')[0])
             self.assertIn('1 of 30 runs', md)
             self.assertIn('Skipped note for two.', md)
             self.assertIn('Skipped: fixture', md)
             self.assertNotIn('Student', md)
             self.assertNotIn('mean', md)
             wall_summary = (source / 'regen/summary-wall.md').read_text()
-            self.assertIn('1000.00 ± 0.00 [1000.00, 1000.00]', wall_summary)
+            self.assertIn('1.000 ± 0.000 s', wall_summary)
             self.assertNotIn('mean', wall_summary)
             html = (source / 'regen/report.html').read_text()
-            self.assertIn('1000.000 [1000.000, 1000.000]', html)
+            self.assertIn('1000.0 ± 0.0 ms', html)
+            self.assertIn('2.00×', html)
             # Regeneration also supports replacing the reports in place.
             with contextlib.redirect_stdout(io.StringIO()):
                 bench.report_only(source, source)

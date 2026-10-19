@@ -96,9 +96,9 @@ policy and each workload's actual output location.
 
 The report goes in `--out`, by default `bench-<date>/`, and contains:
 
-- **`report.md`** starts with one table of every linker's wall time as a
-  ratio to the baseline, one row per workload, which is usually all you
-  need. A table per workload follows: median wall time with its bootstrap 95%
+- **`report.md`** starts with one table of every linker's median wall time
+  and its ratio to the baseline, one row per workload, which is usually all
+  you need. A table per workload follows: median wall time with its bootstrap 95%
   confidence interval, median CPU time (user plus system), median peak memory and the
   ratio.
 - **`summary-wall.md`** collects the per-workload wall medians and intervals
@@ -107,14 +107,12 @@ The report goes in `--out`, by default `bench-<date>/`, and contains:
 - **One directory per workload** holds the raw samples, the exact link
   commands and logs.
 
-The error bars are confidence intervals for the *median*, rather than the
-spread of individual runs. A ratio of `0.59 [0.55, 0.63]` estimates that the
-linker takes 59% of the baseline's median time, with a 95% confidence interval
-from 55% to 63%. An interval that includes 1.0 means the run did not show a
-difference. Wall and ratio intervals use 10,000 bootstrap resamples with a
-fixed seed (0); the ratio resamples each linker's measurements independently.
-Tables show median ± CI half-width, followed by the actual bounds in
-brackets, since bootstrap intervals can be asymmetric.
+Times are shown as median ± half the width of its 95% confidence interval,
+such as `158.8 ± 0.4 ms`. The interval is for the *median*, rather than the
+spread of individual runs, and comes from 10,000 bootstrap resamples with a
+fixed seed (0). A ratio such as `0.69×` divides one linker's median by the
+baseline's; to tell whether two linkers really differ, compare their
+intervals.
 
 A noise note appears if a median's CI half-width exceeds 2% of the median,
 or any run exceeds 1.5× the median. It gives the range and the number of

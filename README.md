@@ -65,24 +65,24 @@ godot-ios: fetching
 godot-ios: extracting
 godot-ios: verified (0.2 GB)
 godot-ios: linking (correctness, warmup, sampling)
-godot-ios: done; ld64.lld 1.000 [1.000, 1.000], apple 0.922 [0.911, 0.926]; extraction deleted
+godot-ios: done; ld64.lld 375.4 ± 1.3 ms, apple 346.0 ± 2.3 ms (0.92×); extraction deleted
 rust-release: fetching
 ...
-llvm-clang: done; ld64.lld 1.000 [1.000, 1.000], apple 0.619 [0.616, 0.622]; extraction deleted
+llvm-clang: done; ld64.lld 453.1 ± 1.1 ms, apple 280.2 ± 1.1 ms (0.62×); extraction deleted
 Report: bench-20261018T041530Z/report.md
 ```
 
-`report.md` opens with each linker's time as a ratio to the first one, with
-its 95% confidence interval, followed by the median times, CPU time and peak
+`report.md` opens with each linker's median time and its 95% confidence
+interval, and the ratio to the first linker, followed by CPU time and peak
 memory for each workload:
 
 | Workload | ld64.lld | apple |
 | --- | --- | --- |
-| godot-ios | 1.000 [1.000, 1.000] | 0.922 [0.911, 0.926] |
-| rust-release | 1.000 [1.000, 1.000] | 0.691 [0.684, 0.696] |
-| sourcekit-lsp | 1.000 [1.000, 1.000] | 0.532 [0.530, 0.533] |
-| firefox-ios | 1.000 [1.000, 1.000] | 0.709 [0.706, 0.712] |
-| chromium-ios-sym0 | 1.000 [1.000, 1.000] | Skipped: Apple ld cannot read thin archives |
+| godot-ios | 375.4 ± 1.3 ms | 346.0 ± 2.3 ms (0.92×) |
+| rust-release | 158.8 ± 0.4 ms | 109.8 ± 0.9 ms (0.69×) |
+| sourcekit-lsp | 598.3 ± 1.5 ms | 318.3 ± 0.3 ms (0.53×) |
+| firefox-ios | 548.2 ± 1.2 ms | 388.6 ± 1.2 ms (0.71×) |
+| chromium-ios-sym0 | 1.161 ± 0.002 s | Skipped: Apple ld cannot read thin archives |
 | ... | | |
 
 The full run downloads 23 GB and needs about 75 GB of free disk at its

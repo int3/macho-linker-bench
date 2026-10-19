@@ -296,16 +296,6 @@ def median_interval(values):
                               for _ in range(10_000))
 
 
-def ratio_interval(numerator, denominator):
-    """95% percentile bootstrap CI for independently sampled medians."""
-    if min(len(numerator), len(denominator)) < 2:
-        return math.nan, math.nan
-    rng = random.Random(0)
-    return bootstrap_interval(statistics.median(rng.choices(numerator, k=len(numerator))) /
-                              statistics.median(rng.choices(denominator, k=len(denominator)))
-                              for _ in range(10_000))
-
-
 def summarize(raw, names):
     rows = list(csv.DictReader(io.StringIO(raw)))
     summaries = {}
@@ -327,12 +317,8 @@ def summarize(raw, names):
 
     base = names[0]
     for name, summary in summaries.items():
-        if name == base:
-            summary['ratio'] = (1.0, 1.0, 1.0)
-        elif base in summaries:
-            low, high = ratio_interval(summary['wall'], summaries[base]['wall'])
-            summary['ratio'] = (summary['medians']['wall_time'] / summaries[base]['medians']['wall_time'],
-                                low, high)
+        if name != base and base in summaries:
+            summary['ratio'] = summary['medians']['wall_time'] / summaries[base]['medians']['wall_time']
     return summaries
 
 
@@ -397,38 +383,57 @@ def sample(cbdr, specs, args, directory):
     return samples.read_text()
 
 
+def time_text(seconds, ci):
+    """Median ± CI half-width, in ms below a second and in s above."""
+    scale, unit, digits = (1000, 'ms', 1) if seconds < 1 else (1, 's', 3)
+    spread = f'{ci * scale:.{digits}f}' if math.isfinite(ci) else 'n/a'
+    return f'{seconds * scale:.{digits}f} ± {spread} {unit}'
+
+
+def wall_text(summary):
+    return time_text(summary['medians']['wall_time'], summary['ci'])
+
+
 def ratio_text(summary):
     ratio = summary.get('ratio') if summary else None
-    if not ratio:
+    return f'{ratio:.2f}×' if ratio else '—'
+
+
+def result_text(summary):
+    """A linker's wall time, followed by its ratio to the baseline when it has one."""
+    if not summary:
         return 'n/a'
-    median, low, high = ratio
-    return f'{median:.3f} [{low:.3f}, {high:.3f}]' if math.isfinite(low + high) else f'{median:.3f} [n/a]'
+    return wall_text(summary) + (f' ({ratio_text(summary)})' if summary.get('ratio') else '')
+
+
+def status_text(name, cells, summaries):
+    """Console form of one linker's result: its time, or why it has none."""
+    if name in summaries:
+        return result_text(summaries[name])
+    return cells.get(name, 'n/a').split(':')[0].lower()
 
 
 def bar_chart(title, bars, unit):
-    bars = [(label, median, low, high) for label, median, low, high in bars if math.isfinite(low + high)]
+    """Bars of (label, value, CI half-width or None)."""
+    bars = [(label, value, ci) for label, value, ci in bars if ci is None or math.isfinite(ci)]
     if not bars:
         return ''
-    scale = 550 / max(high for _, _, _, high in bars)
+    scale = 550 / max(value + (ci or 0) for _, value, ci in bars)
     svg = [f'<h2>{html.escape(title)}</h2><svg role="img" aria-label="{html.escape(title)}; 95% confidence intervals" '
            f'viewBox="0 0 1100 {len(bars) * 48 + 30}" style="width:100%">']
     if unit == '×':
         svg.append(f'<path d="M {220 + scale} 10 V {len(bars) * 48 + 15}" stroke="#888" stroke-dasharray="4"/>')
-    for i, (label, median, low, high) in enumerate(bars):
+    for i, (label, value, ci) in enumerate(bars):
         y = i * 48 + 25
-        lo, hi = 220 + max(0, low) * scale, 220 + high * scale
         svg += [f'<text x="0" y="{y + 5}">{html.escape(label)}</text>',
-                f'<rect x="220" y="{y - 12}" width="{median * scale}" height="24" fill="#4b88b6"/>',
-                f'<path d="M {lo} {y} H {hi} M {lo} {y-7} V {y+7} M {hi} {y-7} V {y+7}" stroke="black" fill="none"/>',
-                f'<text x="790" y="{y + 5}">{median:.3f} [{low:.3f}, {high:.3f}] {unit}</text>']
+                f'<rect x="220" y="{y - 12}" width="{value * scale}" height="24" fill="#4b88b6"/>']
+        if ci is None:
+            svg.append(f'<text x="790" y="{y + 5}">{value:.2f}{unit}</text>')
+            continue
+        lo, hi = 220 + max(0, value - ci) * scale, 220 + (value + ci) * scale
+        svg += [f'<path d="M {lo} {y} H {hi} M {lo} {y-7} V {y+7} M {hi} {y-7} V {y+7}" stroke="black" fill="none"/>',
+                f'<text x="790" y="{y + 5}">{value:.1f} ± {ci:.1f} {unit}</text>']
     return '\n'.join(svg) + '</svg>'
-
-
-def wall_text(summary):
-    median, ci = summary['medians']['wall_time'] * 1000, summary['ci'] * 1000
-    low, high = (v * 1000 for v in summary['interval'])
-    return (f'{median:.2f} ± {ci:.2f} [{low:.2f}, {high:.2f}]'
-            if math.isfinite(ci) else f'{median:.2f} ± n/a')
 
 
 def report(out, metadata, results):
@@ -444,10 +449,10 @@ def report(out, metadata, results):
                      *['<tr>' + ''.join(f'<td>{html.escape(cell)}</td>' for cell in row) + '</tr>' for row in rows], '</table>'])
 
     names = list(results[0][1])
-    table(f'Wall ratio to {names[0]} (95% CI)', ['Workload', *names],
-          [[w, *[ratio_text(s.get(n)) if n in s else cells[n] for n in names]] for w, cells, s, _ in results])
-    page.append(bar_chart('Wall ratio summary (lower is faster)',
-                [(f'{w} / {n}', *v['ratio']) for w, _, s, _ in results for n, v in s.items() if v['ratio']], '×'))
+    table(f'Median wall time ± 95% CI, with ratio to {names[0]}', ['Workload', *names],
+          [[w, *[result_text(s.get(n)) if n in s else cells[n] for n in names]] for w, cells, s, _ in results])
+    page.append(bar_chart(f'Wall time ratio to {names[0]} (lower is faster)',
+                [(f'{w} / {n}', v['ratio'], None) for w, _, s, _ in results for n, v in s.items() if v['ratio']], '×'))
     for workload, cells, summaries, note in results:
         if note:
             text.extend([note, ''])
@@ -460,23 +465,22 @@ def report(out, metadata, results):
                 continue
             rows.append([name, str(s['samples']), wall_text(s), f'{s["medians"]["cpu_time"] * 1000:.2f}',
                          f'{s["medians"]["max_rss_mib"]:.1f}', ratio_text(s)])
-        table(workload, ['Linker', 'Samples', 'Wall median ± CI half-width [95% CI] (ms)', 'CPU median (ms)', 'Peak RSS median (MiB)', 'Ratio to first [95% CI]'], rows)
+        table(workload, ['Linker', 'Samples', 'Wall median ± 95% CI', 'CPU median (ms)', 'Peak RSS median (MiB)', f'Ratio to {names[0]}'], rows)
         for name, summary in summaries.items():
             if summary['noisy']:
                 noise = noise_note(name, summary)
                 text.extend([noise, ''])
                 page.append(f'<p>{html.escape(noise)}</p>')
         page.append(bar_chart(workload + ' wall time', [(n, s['medians']['wall_time'] * 1000,
-                    s['interval'][0] * 1000, s['interval'][1] * 1000) for n, s in summaries.items()], 'ms'))
-    footer = ('Wall and ratio CIs use a 95% percentile bootstrap of sample medians '
-              '(10,000 resamples, seed 0); ratios resample each linker independently. '
-              'The ± value is the CI half-width; brackets give the actual, possibly asymmetric bounds. '
+                    s['ci'] * 1000) for n, s in summaries.items()], 'ms'))
+    footer = ('Wall CIs use a 95% percentile bootstrap of sample medians (10,000 resamples, seed 0); '
+              'the ± value is half the interval\'s width. Ratios divide median wall times. '
               'cbdr is used only for sampling. CPU and peak RSS are sample medians; '
-              'n/a indicates an unavailable CI or baseline; raw samples are in each original workload directory.')
+              'n/a indicates an unavailable CI; raw samples are in each original workload directory.')
     wall_rows = [[workload, *[wall_text(summaries[name]) if name in summaries else cells[name]
                              for name in names]] for workload, cells, summaries, _ in results]
     (out / 'summary-wall.md').write_text(
-        '| Workload | ' + ' | '.join(f'{name} median ± CI half-width [95% CI] (ms)' for name in names) + ' |\n'
+        '| Workload | ' + ' | '.join(f'{name} median ± 95% CI' for name in names) + ' |\n'
         + '| ' + ' | '.join('---' for _ in range(len(names) + 1)) + ' |\n'
         + '\n'.join('| ' + ' | '.join(row) + ' |' for row in wall_rows) + '\n')
     (out / 'report.md').write_text('\n'.join(text) + '\n' + footer + '\n')
@@ -490,7 +494,7 @@ def report(out, metadata, results):
 def report_only(source, out):
     """Reuse the saved report's metadata, cell statuses and workload order."""
     sections = (source / 'report.md').read_text().split('\n## ')
-    if len(sections) < 3 or not sections[1].startswith('Wall ratio to '):
+    if len(sections) < 3 or not sections[1].startswith(('Wall ratio to ', 'Median wall time ')):
         raise ValueError('report-only requires an existing bench.py report.md')
     metadata = sections[0].splitlines()[2:]
     state_file = source / 'run.json'
@@ -523,7 +527,7 @@ def report_only(source, out):
         # Existing workload notes precede the next workload's heading.
         note = '\n'.join(line for line in trailing
                          if ' noisy: samples ranged ' not in line
-                         and not line.startswith(('Mean wall CIs', 'Wall and ratio CIs'))
+                         and not line.startswith(('Mean wall CIs', 'Wall and ratio CIs', 'Wall CIs'))
                          and not re.match(r'^.+: \d+ of \d+ runs over 1\.5× the median', line))
     out.mkdir(parents=True, exist_ok=True)
     report(out, metadata, results)
@@ -679,7 +683,7 @@ def main():
             if resumed[workload]:
                 cells, summaries, note = resumed[workload]
                 results.append((workload, cells, summaries, note))
-                print(f'{workload}: done (resumed); ' + ', '.join(f'{n} {ratio_text(summaries.get(n))}' for n in linkers), flush=True)
+                print(f'{workload}: done (resumed); ' + ', '.join(f'{n} {status_text(n, cells, summaries)}' for n in linkers), flush=True)
                 report(out, metadata, results)
                 continue
             created = False
@@ -776,7 +780,7 @@ def main():
                           samples_sha256=hashlib.sha256(raw.encode()).hexdigest()))
             results.append((workload, cells, summaries, note))
             print(f'{workload}: done' + (' (failed)' if workload_failed else '') + '; ' +
-                  ', '.join(f'{n} {ratio_text(summaries.get(n))}' for n in linkers) +
+                  ', '.join(f'{n} {status_text(n, cells, summaries)}' for n in linkers) +
                   ('; extraction deleted' if created and not args.keep else ''), flush=True)
             report(out, metadata, results)
     print(f'Report: {out / "report.md"}\nCharts: {out / "report.html"}', flush=True)
