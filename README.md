@@ -43,6 +43,11 @@ as Apple's `ld`. Apple's `ld` cannot read the thin archives that Chromium's
 build writes, so the Chromium links are LLD-only. The two largest links need
 more memory than the Mac mini has.
 
+The `symN` suffix is Chromium's `symbol_level=N` build setting, which sets
+how much debug info the objects carry: `sym0` has none, `sym1` adds line
+tables, and `sym2` adds full DWARF. Otherwise the links on each platform are
+identical.
+
 ## Run it
 
 You need macOS or Linux, Python 3, `zstd`, and
