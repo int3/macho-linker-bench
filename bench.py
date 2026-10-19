@@ -410,7 +410,7 @@ def status_text(name, cells, summaries):
     """Console form of one linker's result: its time, or why it has none."""
     if name in summaries:
         return result_text(summaries[name])
-    return cells.get(name, 'n/a').split(':')[0].lower()
+    return cells.get(name, 'n/a').strip().split(':')[0].lower()
 
 
 def bar_chart(title, bars, unit):
