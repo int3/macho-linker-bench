@@ -124,10 +124,6 @@ work, and a linker that is fast on one can be slow on another.
 | Export lists and dead stripping | `firefox-macos`, `chromium-macos-*`; dead stripping in most |
 | Mixed-language links | `firefox-ios` (Swift, Objective-C, Rust), `firefox-macos` (C++, Rust) |
 
-Every workload is pinned by a SHA-256, and LLD's output is deterministic, so
-when a change makes LLD faster you can also check that it still writes the
-same binary.
-
 [CAPTURES.md](CAPTURES.md) describes each capture: the source revision,
 build configuration, input counts and flags, and how the captures were
 made.
