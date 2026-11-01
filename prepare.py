@@ -33,10 +33,12 @@ if args.apple:
     i = 0
     while i < len(tokens):
         token = tokens[i]
-        if token in remove or token.startswith(('--read-workers=', '--slop_scale=')):
+        if token in remove or token.startswith(('--read-workers=', '--slop_scale=',
+                                                '--ignore-auto-link-option=')):
             i += 1
         elif (i + 1 < len(tokens) and
-              ((token == '-O' and tokens[i + 1].isdigit()) or
+              (token == '--ignore-auto-link-option' or
+               (token == '-O' and tokens[i + 1].isdigit()) or
                (token == '-mllvm' and tokens[i + 1] == '-enable-linkonceodr-outlining'))):
             i += 2
         else:

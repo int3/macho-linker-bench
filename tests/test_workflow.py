@@ -227,5 +227,19 @@ class PartialSamples(unittest.TestCase):
         self.assertEqual((self.sample_directory / 'samples.csv').read_text(), prior)
 
 
+class Prepare(unittest.TestCase):
+    def test_apple_response_drops_lld_only_options(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'response.txt').write_text(
+                '-demangle\n-mllvm -enable-linkonceodr-outlining\n-O 1\n--icf=all\n'
+                '--ignore-auto-link-option UIUtilities\n--ignore-auto-link-option=CoreAudioTypes\n'
+                '--read-workers=2\n-framework Foundation\n')
+            subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1] / 'prepare.py'),
+                            str(root), '--apple'], check=True, stdout=subprocess.DEVNULL)
+            self.assertEqual((root / 'apple-response.txt').read_text(),
+                             '-ld_new\n"-demangle"\n"-framework"\n"Foundation"\n')
+
+
 if __name__ == '__main__':
     unittest.main()
