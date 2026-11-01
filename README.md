@@ -31,15 +31,16 @@ at least 20 interleaved runs; every 95% confidence interval is within
 | `llvm-clang` | 453 ms | 280 ms | 1.62× | 819 ms |
 | `telegram` | 1.60 s | 912 ms | 1.75× | 3.40 s |
 | `firefox-macos` | 1.07 s | 649 ms | 1.65× | 2.00 s |
-| `chromium-macos-sym0` | pending | pending | pending | pending |
-| `chromium-macos-sym1` | pending | pending | pending | pending |
-| `chromium-macos-sym2` | needs 64 GB | needs 64 GB | — | pending |
-| `chromium-macos-debug-component` | needs 32 GB | needs 32 GB | — | pending |
-| `chromium-ios-sym0` | pending | pending | pending | pending |
-| `chromium-ios-sym1` | pending | pending | pending | pending |
+| `chromium-macos-sym0` | 4.20 s | 2.22 s | 1.89× | 9.38 s |
+| `chromium-macos-sym1` | 4.92 s | 2.63 s | 1.88× | 10.2 s |
+| `chromium-macos-sym2` | needs 64 GB | needs 64 GB | — | 10.6 s |
+| `chromium-macos-debug-component` | needs 32 GB | needs 32 GB | — | 14.6 s |
+| `chromium-ios-sym0` | 898 ms | 625 ms | 1.44× | 1.43 s |
+| `chromium-ios-sym1` | 1.10 s | 777 ms | 1.41× | 1.68 s |
 
-On the nine links outside Chromium, LLD takes 1.1 to 1.9 times as long as
-Apple's `ld`. The two largest links need more memory than the Mac mini has.
+On the thirteen links that fit in the Mac mini's memory, LLD takes 1.1 to
+1.9 times as long as Apple's `ld`. The two largest links need more memory
+than the Mac mini has.
 
 The `symN` suffix is Chromium's `symbol_level=N` build setting, which sets
 how much debug info the objects carry: `sym0` has none, `sym1` adds line
