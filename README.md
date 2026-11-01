@@ -31,22 +31,21 @@ at least 20 interleaved runs; every 95% confidence interval is within
 | `llvm-clang` | 453 ms | 280 ms | 1.62× | 819 ms |
 | `telegram` | 1.60 s | 912 ms | 1.75× | 3.40 s |
 | `firefox-macos` | 1.07 s | 649 ms | 1.65× | 2.00 s |
-| `chromium-macos-sym0` | 5.10 s | — | — | 9.81 s |
-| `chromium-macos-sym1` | 5.88 s | — | — | 10.63 s |
-| `chromium-macos-sym2` | needs 64 GB | — | — | 11.19 s |
-| `chromium-macos-debug-component` | needs 32 GB | — | — | 14.90 s |
-| `chromium-ios-sym0` | 1.16 s | — | — | 1.55 s |
-| `chromium-ios-sym1` | 1.37 s | — | — | 1.82 s |
+| `chromium-macos-sym0` | pending | pending | pending | pending |
+| `chromium-macos-sym1` | pending | pending | pending | pending |
+| `chromium-macos-sym2` | needs 64 GB | needs 64 GB | — | pending |
+| `chromium-macos-debug-component` | needs 32 GB | needs 32 GB | — | pending |
+| `chromium-ios-sym0` | pending | pending | pending | pending |
+| `chromium-ios-sym1` | pending | pending | pending | pending |
 
-On the nine links both linkers can do, LLD takes 1.1 to 1.9 times as long
-as Apple's `ld`. Apple's `ld` cannot read the thin archives that Chromium's
-build writes, so the Chromium links are LLD-only. The two largest links need
-more memory than the Mac mini has.
+On the nine links outside Chromium, LLD takes 1.1 to 1.9 times as long as
+Apple's `ld`. The two largest links need more memory than the Mac mini has.
 
 The `symN` suffix is Chromium's `symbol_level=N` build setting, which sets
 how much debug info the objects carry: `sym0` has none, `sym1` adds line
 tables, and `sym2` adds full DWARF. Otherwise the links on each platform are
-identical.
+identical. Chromium's build normally writes thin archives, which Apple's
+`ld` cannot read; these captures were built with regular archives instead.
 
 ## Run it
 
@@ -87,7 +86,7 @@ memory for each workload:
 | rust-release | 158.8 ± 0.4 ms | 109.8 ± 0.9 ms (0.69×) |
 | sourcekit-lsp | 598.3 ± 1.5 ms | 318.3 ± 0.3 ms (0.53×) |
 | firefox-ios | 548.2 ± 1.2 ms | 388.6 ± 1.2 ms (0.71×) |
-| chromium-ios-sym0 | 1.161 ± 0.002 s | Skipped: Apple ld cannot read thin archives |
+| llvm-clang | 453.1 ± 1.1 ms | 280.2 ± 1.1 ms (0.62×) |
 | ... | | |
 
 The full run downloads 23 GB and needs about 75 GB of free disk at its
@@ -117,7 +116,7 @@ work, and a linker that is fast on one can be slow on another.
 
 | Linker work | Where it dominates |
 | --- | --- |
-| Reading and resolving tens of thousands of inputs | `chromium-macos-*` (44,620 objects, 2,314 archives), `chromium-ios-*` |
+| Reading and resolving tens of thousands of inputs | `chromium-macos-*` (20,380 objects, 2,314 archives), `chromium-ios-*` |
 | Choosing archive members | `llvm-clang` (197 archives, 3,838 members) |
 | Loading whole archives into a dylib | `llvm-libllvm` (`-all_load` over 199 archives) |
 | Linking against many dylibs | `chromium-macos-debug-component` (459 Chromium dylibs) |

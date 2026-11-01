@@ -78,16 +78,15 @@ leaving the response and inputs untouched.
 **Apple's `ld`.** `python3 prepare.py <capture dir> --apple` writes an
 `apple-response.txt` next to the original. It adds `-ld_new` and drops the
 flags Apple's linker rejects: LLD's `--icf`, `-O`, the `-mllvm` outlining
-option, `--read-workers`, `--slop_scale` and diagnostic options. Run it with Xcode
-26.6 selected:
+option, `--read-workers`, `--slop_scale`, `--ignore-auto-link-option` and
+diagnostic options. Run it with Xcode 26.6 selected:
 
 ```sh
 xcrun ld @apple-response.txt -o /some/output/path
 ```
 
-This works for the nine captures that aren't Chromium. Chromium's GN build writes
-thin archives, which Apple's `ld` rejects. Apple's output is not expected to
-match LLD's byte for byte.
+This works for all fifteen. Apple's output is not expected to match LLD's
+byte for byte.
 
 **When comparing outputs**, keep both the capture directory and the output
 basename the same between runs. Debug-map paths and the UUID depend on them.
@@ -118,8 +117,7 @@ overwrites an existing extraction. Once the repository is public,
 In the tables below:
 
 - **Input** counts the files the link reads. Archive members are counted
-  separately from standalone objects. In a thin archive the members are
-  themselves standalone files, so for Chromium the two counts overlap.
+  separately from standalone objects.
 - **Debug map** is the number of debug-map (STABS) entries in LLD's output:
   one per symbol the debugger can find via the object files. The DWARF
   itself stays in the objects.
@@ -298,30 +296,37 @@ arguments are `target_cpu="arm64"`, `is_debug=false`,
 This is the release-style monolithic link, not the component build used in
 day-to-day Chromium development.
 
-Chromium's link is the largest in the set by object count. It has 44,620
-objects, many of them reached through 2,109 thin archives. It also runs
+All six Chromium captures change one thing in the source: the
+`thin_archive` config in `build/config/compiler/BUILD.gn` no longer passes
+`-T -s` to the archiver, so every static library is a regular archive
+rather than a thin one, which Apple's `ld` cannot read.
+
+Chromium's link is the largest in the set by object count. It has 20,380
+objects and 2,314 archives with 25,849 members. It also runs
 `--icf=all`, Chromium's order file (`framework.order`) and an export list.
 `symbol_level=1` adds line tables and `symbol_level=2` full DWARF, which
-grows the input from 2.8 GB to 52 GB while the output stays about the same
+grows the input from 2.9 GB to 52 GB while the output stays about the same
 size.
 
 | | sym0 | sym1 | sym2 |
 | --- | ---: | ---: | ---: |
-| Input | 2.8 GB | 7.6 GB | 51.9 GB |
+| Input | 2.9 GB | 7.6 GB | 51.9 GB |
 | Inputs carrying DWARF | 409 | 45,947 | 45,955 |
 | Debug-map entries | 0 | 2,045,716 | 2,047,608 |
-| Download | 537 MB | 1.6 GB | 9.0 GB (5 parts) |
+| Download | 540 MB | 1.7 GB | 9.0 GB (5 parts) |
 
 | | |
 | --- | --- |
 | Source | Chromium `285a6752d67d53c813bc909ed13a2ae0e930c0ed` (154.0.8023.0); depot_tools `ed9c87f6f12f6b87210e7025d4a36a5a72a2ccd4` |
 | Output | `Chromium Framework` dylib, macOS 13.0+ |
-| Input | 44,620 objects; 2,314 archives, 2,109 of them thin (25,849 members); 172 `.tbd` |
+| Input | 20,380 objects; 2,314 archives (25,849 members); 172 `.tbd` |
 | Flags | `-dylib`, `-dead_strip`, `-ObjC`, `--icf=all`, `-order_file`, `-exported_symbols_list`, `-fatal_warnings`, `--read-workers=2` |
 | Captured with | LLD `c1b661fde124` |
 
 The sym2 link reads more input than the mini's 16 GB of memory can cache, so
-its time depends heavily on what else is in memory.
+its time depends heavily on what else is in memory. Its `libblink_core.a` is
+over 8 GiB, which LLD's `--reproduce` tar writer records with a truncated
+size; the published tar has the same contents with a PAX size record.
 
 ### chromium-macos-debug-component
 
@@ -341,7 +346,7 @@ ICF or export list. Its debug map is the largest in the set.
 | --- | --- |
 | Source | same Chromium and depot_tools as chromium-macos |
 | Output | `libchrome_dll.dylib`, macOS 13.0+ |
-| Input | 16,939 objects; 853 archives, 772 of them thin (6,638 members); 459 dylibs; 139 `.tbd`; 19.3 GB |
+| Input | 11,149 objects; 853 archives (6,638 members); 459 dylibs; 139 `.tbd`; 19.3 GB |
 | Debug info | every object carries DWARF; 6,922,450 debug-map entries |
 | Flags | `-dylib`, `-ObjC`, `-order_file`, `-fatal_warnings`, `--read-workers=2` |
 | Captured with | LLD `c1b661fde124` |
@@ -356,7 +361,7 @@ Chromium for iOS: the `Chromium` executable of `//ios/chrome/app:chrome`, a
 device build, release, at `symbol_level` 0 and 1. The GN arguments are
 `target_os="ios"`, `target_environment="device"`, `target_cpu="arm64"`,
 `is_debug=false`, `is_component_build=false`, `use_lld=true` and
-`ios_enable_code_signing=false`. Like the desktop build it uses thin
+`ios_enable_code_signing=false`. Like the desktop build it uses regular
 archives and `--icf=all`. It also needs the two empty SDK directories
 recreated before linking (see [Replaying](#replaying)).
 
@@ -371,6 +376,6 @@ recreated before linking (see [Replaying](#replaying)).
 | --- | --- |
 | Source | same Chromium and depot_tools as desktop |
 | Output | `Chromium` executable, iOS 18.0+ |
-| Input | 16,128 objects; 905 archives, 779 of them thin (9,160 members); 2 dylibs; 109 `.tbd` |
+| Input | 8,025 objects; 905 archives (9,160 members); 2 dylibs; 109 `.tbd` |
 | Flags | `-ObjC`, `-dead_strip`, `--icf=all`, `-fatal_warnings` |
 | Captured with | LLD `c1b661fde124` |

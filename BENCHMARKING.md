@@ -37,7 +37,7 @@ measurement settings requires a new output directory.
 
 ## Disk and time
 
-All 15 captures download **23.35 GB**. Streaming extraction verifies every
+All 15 captures download **23.37 GB**. Streaming extraction verifies every
 part, the combined compressed stream and the raw tar's hash and byte count.
 It never writes a combined compressed file or a raw tar. Only one new
 extraction is needed at a time.
@@ -47,8 +47,8 @@ GB, excluding linked outputs and reports):
 
 | Selection | Download | Peak with cache | Peak with `--no-cache` |
 | --- | --- | --- | --- |
-| All 15 | 23.35 GB | 75.36 GB | 60.99 GB |
-| `--skip-large` (13) | 11.27 GB | 30.13 GB | 22.17 GB |
+| All 15 | 23.37 GB | 75.40 GB | 61.02 GB |
+| `--skip-large` (13) | 11.27 GB | 30.14 GB | 22.17 GB |
 
 The preflight estimates the extra space needed on the corpus disk and
 refuses if it will not fit; `--ignore-disk-space` overrides it. `--keep`
