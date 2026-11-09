@@ -1,0 +1,68 @@
+{
+  "traceEvents": [
+    {
+      "pid": 63443,
+      "tid": 259,
+      "ts": 116,
+      "ph": "X",
+      "dur": 211369,
+      "name": "Load input files"
+    },
+    {
+      "pid": 63443,
+      "tid": 259,
+      "ts": 254586,
+      "ph": "X",
+      "dur": 50156,
+      "name": "markLive"
+    },
+    {
+      "pid": 63443,
+      "tid": 3844,
+      "ph": "X",
+      "ts": 0,
+      "dur": 663245,
+      "name": "Total ExecuteLinker",
+      "args": {
+        "count": 1,
+        "avg ms": 663
+      }
+    },
+    {
+      "pid": 63443,
+      "tid": 3845,
+      "ph": "X",
+      "ts": 0,
+      "dur": 211368,
+      "name": "Total Load input files",
+      "args": {
+        "count": 1,
+        "avg ms": 211
+      }
+    },
+    {
+      "pid": 63443,
+      "tid": 3849,
+      "ph": "X",
+      "ts": 0,
+      "dur": 50155,
+      "name": "Total markLive",
+      "args": {
+        "count": 1,
+        "avg ms": 50
+      }
+    },
+    {
+      "pid": 63443,
+      "tid": 3865,
+      "ph": "X",
+      "ts": 0,
+      "dur": 49,
+      "name": "Total LTO",
+      "args": {
+        "count": 1,
+        "avg ms": 0
+      }
+    }
+  ]
+}

@@ -123,6 +123,23 @@ Use `./bench.py --report-only DIR` to regenerate old reports from their raw
 The report header records the machine, each linker's version and hash, and
 the exact command, so a report can be compared with another or rerun later.
 
+To compare LLD phases, add `--time-trace` when all linkers are LLD:
+
+```sh
+./bench.py --linker base=/path/to/old/ld64.lld --linker new=/path/to/new/ld64.lld \
+  --workloads rust-release --time-trace
+```
+
+Each workload gets a phase table with median times and bootstrap 95%
+confidence intervals for the percentage change in medians. It uses LLD's
+`Total <name>` durations; these scopes can overlap and do not sum to wall
+time. Phases are sorted by baseline time, with phases below 1% of baseline
+wall time in both builds omitted. A phase missing from one build has an
+empty cell. Raw phase times in seconds are saved as `time_trace_<name>`
+metrics in `samples.csv` for cbdr analysis; temporary traces are deleted.
+Time-trace adds overhead to wall time: compare wall numbers only with other
+runs using the same tracing setting, never with an untraced run.
+
 ## Getting stable numbers
 
 - Quit other applications and wait for builds to finish. The script marks
@@ -148,6 +165,7 @@ the exact command, so a report can be compared with another or rerun later.
 | `--public` | fetch public release assets with curl instead of GitHub CLI |
 | `--ignore-disk-space` | override the free-space check |
 | `--out DIR` | combined report directory; reuse it to resume |
+| `--time-trace` | collect LLD phase times and change intervals; requires all linkers to be LLD |
 | `--threads N` | pass `--threads=N` to the LLD linkers (Apple's is unaffected) |
 | `--extra-args 'NAME=ARGS'` | extra flags for one linker, e.g. `'mine=--icf=none'` |
 | `--warmups N` | warmup links per linker per workload (default 1) |

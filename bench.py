@@ -29,6 +29,19 @@ from fetch import catalog, fetch
 
 HERE = Path(__file__).resolve().parent
 METRICS = ('wall_time', 'cpu_time', 'max_rss_mib')
+PHASE_PREFIX = 'time_trace_'
+
+
+def trace_metrics(path):
+    """LLD's Total events aggregate each named scope, in microseconds."""
+    events = json.loads(path.read_text())['traceEvents']
+    metrics = {PHASE_PREFIX + event['name'][6:]: event['dur'] / 1_000_000
+               for event in events if event.get('ph') == 'X' and event.get('name', '').startswith('Total ')}
+    if not metrics:
+        raise ValueError(f'no LLD Total duration events in {path}')
+    if any(not math.isfinite(value) or value < 0 for value in metrics.values()):
+        raise ValueError(f'invalid LLD phase duration in {path}')
+    return metrics
 
 
 def measure(spec, output_sizes=None):
@@ -39,6 +52,13 @@ def measure(spec, output_sizes=None):
     """
     output = Path(spec['output'])
     child = None
+    trace = None
+    argv = list(spec['argv'])
+    if spec.get('time_trace'):
+        fd, path = tempfile.mkstemp(prefix='linkerbench-trace-', suffix='.json', dir=output.parent)
+        os.close(fd)
+        trace = Path(path)
+        argv.append(f'--time-trace={trace}')
 
     def kill_child(*_):
         if child is not None:
@@ -52,7 +72,7 @@ def measure(spec, output_sizes=None):
     try:
         with open(spec['log'], 'ab') as log:
             start = time.perf_counter()
-            child = subprocess.Popen(spec['argv'], cwd=spec['cwd'], stdout=log,
+            child = subprocess.Popen(argv, cwd=spec['cwd'], stdout=log,
                                      stderr=log, start_new_session=True)
             timer.start()
             _, status, usage = os.wait4(child.pid, 0)
@@ -65,8 +85,11 @@ def measure(spec, output_sizes=None):
         if output_sizes is not None:
             output_sizes.append(output.stat().st_size)
         rss_bytes = usage.ru_maxrss * (1 if sys.platform == 'darwin' else 1024)
-        return dict(wall_time=wall, cpu_time=usage.ru_utime + usage.ru_stime,
-                    max_rss_mib=rss_bytes / 1024**2)
+        metrics = dict(wall_time=wall, cpu_time=usage.ru_utime + usage.ru_stime,
+                       max_rss_mib=rss_bytes / 1024**2)
+        if trace is not None:
+            metrics.update(trace_metrics(trace))
+        return metrics
     finally:
         timer.cancel()
         if child is not None and child.returncode is None:
@@ -74,6 +97,8 @@ def measure(spec, output_sizes=None):
             _, status, _ = os.wait4(child.pid, 0)
             child.returncode = os.waitstatus_to_exitcode(status)
         signal.signal(signal.SIGTERM, old_handler)
+        if trace is not None:
+            trace.unlink(missing_ok=True)
         output.unlink(missing_ok=True)
 
 
@@ -304,6 +329,13 @@ def summarize(raw, names):
         if not sample:
             continue
         medians = {key: statistics.median(float(row[key]) for row in sample) for key in METRICS}
+        phases = {}
+        for key in rows[0]:
+            if key.startswith(PHASE_PREFIX):
+                values = [float(row[key]) for row in sample]
+                # cbdr writes NaN when a metric is absent from a linker.
+                if all(math.isfinite(value) and value >= 0 for value in values):
+                    phases[key] = values
         n = len(sample)
         wall = [float(row['wall_time']) for row in sample]
         if any(not math.isfinite(value) or value <= 0 for value in wall):
@@ -313,7 +345,7 @@ def summarize(raw, names):
         outliers = sum(value > 1.5 * medians['wall_time'] for value in wall)
         noisy = ci > 0.02 * medians['wall_time'] or outliers > 0
         summaries[name] = dict(medians=medians, ci=ci, interval=(low, high), samples=n, ratio=None,
-                               wall=wall, noisy=noisy, outliers=outliers)
+                               wall=wall, noisy=noisy, outliers=outliers, phases=phases)
 
     base = names[0]
     for name, summary in summaries.items():
@@ -340,7 +372,9 @@ def sample(cbdr, specs, args, directory):
             saved = previous[:previous.rfind('\n') + 1]
             if saved:
                 reader = csv.DictReader(io.StringIO(saved))
-                if set(reader.fieldnames or []) != {'benchmark', *METRICS}:
+                fields = set(reader.fieldnames or [])
+                if not {'benchmark', *METRICS} <= fields or any(
+                        key not in {'benchmark', *METRICS} and not key.startswith(PHASE_PREFIX) for key in fields):
                     raise RuntimeError(f'invalid saved sample header: {samples}')
                 for row in reader:
                     name = row['benchmark']
@@ -436,15 +470,41 @@ def bar_chart(title, bars, unit):
     return '\n'.join(svg) + '</svg>'
 
 
+def phase_rows(base, new):
+    before, after = base.get('phases', {}), new.get('phases', {})
+    rows = []
+    for key in sorted(before.keys() | after.keys(), key=lambda k: (-statistics.median(before[k]) if k in before else 0, k)):
+        left, right = before.get(key), after.get(key)
+        if max(statistics.median(left or [0]), statistics.median(right or [0])) < 0.01 * base['medians']['wall_time']:
+            continue
+        cells = []
+        for values in (left, right):
+            if values:
+                low, high = median_interval(values)
+                cells.append(time_text(statistics.median(values), (high - low) / 2))
+            else:
+                cells.append('')
+        change = ''
+        if left and right and statistics.median(left) > 0 and min(len(left), len(right)) >= 2:
+            rng = random.Random(0)
+            low, high = bootstrap_interval(
+                100 * (statistics.median(rng.choices(right, k=len(right))) /
+                       statistics.median(rng.choices(left, k=len(left))) - 1)
+                for _ in range(10_000)) if min(left) > 0 else (math.nan, math.nan)
+            change = f'[{low:+.1f}%, {high:+.1f}%]' if math.isfinite(low) else 'n/a'
+        rows.append([key[len(PHASE_PREFIX):], *cells, change])
+    return rows
+
+
 def report(out, metadata, results):
     text = ['# Mach-O LinkerBench', '', *metadata, '']
     page = ['<h1>Mach-O LinkerBench</h1>', *[f'<p>{html.escape(line)}</p>' for line in metadata]]
 
-    def table(title, headers, rows):
-        text.extend([f'## {title}', '', '| ' + ' | '.join(headers) + ' |',
+    def table(title, headers, rows, level=2):
+        text.extend([f'{"#" * level} {title}', '', '| ' + ' | '.join(headers) + ' |',
                      '| ' + ' | '.join('---' for _ in headers) + ' |',
                      *['| ' + ' | '.join(row) + ' |' for row in rows], ''])
-        page.extend([f'<h2>{html.escape(title)}</h2><table><tr>',
+        page.extend([f'<h{level}>{html.escape(title)}</h{level}><table><tr>',
                      *[f'<th>{html.escape(h)}</th>' for h in headers], '</tr>',
                      *['<tr>' + ''.join(f'<td>{html.escape(cell)}</td>' for cell in row) + '</tr>' for row in rows], '</table>'])
 
@@ -471,6 +531,21 @@ def report(out, metadata, results):
                 noise = noise_note(name, summary)
                 text.extend([noise, ''])
                 page.append(f'<p>{html.escape(noise)}</p>')
+        base = summaries.get(names[0])
+        if base:
+            for name in names[1:]:
+                if name not in summaries:
+                    continue
+                phases = phase_rows(base, summaries[name])
+                if phases:
+                    table(f'Time-trace phases: {workload}, {name} vs {names[0]}',
+                          ['Phase', f'{names[0]} median ± 95% CI', f'{name} median ± 95% CI',
+                           'Change in median (95% CI)'], phases, level=3)
+                    phase_note = ('LLD Total scopes can overlap. Phases below 1% of baseline wall time in both builds are omitted; '
+                                  'empty cells indicate a missing phase. Change CIs bootstrap independent sample medians '
+                                  '(10,000 resamples, seed 0). Time-trace adds wall-time overhead.')
+                    text.extend([phase_note, ''])
+                    page.append(f'<p>{phase_note}</p>')
         page.append(bar_chart(workload + ' wall time', [(n, s['medians']['wall_time'] * 1000,
                     s['ci'] * 1000) for n, s in summaries.items()], 'ms'))
     footer = ('Wall CIs use a 95% percentile bootstrap of sample medians (10,000 resamples, seed 0); '
@@ -511,7 +586,14 @@ def report_only(source, out):
         cells = {}
         trailing = []
         in_table = False
+        in_phases = False
         for line in section.splitlines()[1:]:
+            if line.startswith('### Time-trace phases:'):
+                in_phases = True
+            if in_phases:
+                if line.startswith('LLD Total scopes'):
+                    in_phases = False
+                continue
             if line.startswith('| '):
                 in_table = True
                 row = line[2:-2].split(' | ')
@@ -555,6 +637,7 @@ def main():
     stopping.add_argument('--samples', type=int, default=20, help='minimum samples per cell (default 20; counts may vary)')
     stopping.add_argument('--time', help='cbdr time budget per workload, e.g. 10m; counts may vary')
     parser.add_argument('--warmups', type=int, default=1, help='warmups per cell, minimum 1 (cbdr runs one itself)')
+    parser.add_argument('--time-trace', action='store_true', help='collect LLD phase times (adds timing overhead; all linkers must be LLD)')
     parser.add_argument('--threads', type=int, help='pass --threads=N to LLD-family linkers')
     parser.add_argument('--extra-args', action='append', type=named, default=[], metavar="NAME='ARGS'")
     parser.add_argument('--output-dir', type=Path, help='override RAM output storage with this directory')
@@ -648,6 +731,8 @@ def main():
             metadata.append(warning)
         linkers[name] = str(path)
         versions[name] = command([str(path), '-v' if name == 'apple' else '--version']).split('\n', 1)[0]
+        if args.time_trace and not re.search(r'\bLLD\b', versions[name], re.IGNORECASE):
+            parser.error(f'--time-trace requires LLD; {name} reports: {versions[name]}')
         digest = hashlib.sha256()
         with path.open('rb') as binary:
             for block in iter(lambda: binary.read(1024 * 1024), b''):
@@ -659,6 +744,9 @@ def main():
                     threads=args.threads, timeout=args.link_timeout, output_dir=str(args.output_dir) if args.output_dir else None,
                     allow_external_output=args.allow_external_output,
                     manifest_sha256=hashlib.sha256((HERE / 'manifest.tsv').read_bytes()).hexdigest())
+    if args.time_trace:
+        identity['time_trace'] = True
+        metadata.append('LLD time-trace enabled; wall times include tracing overhead.')
     state_file = out / 'run.json'
     if state_file.is_file():
         previous = json.loads(state_file.read_text())
@@ -731,6 +819,8 @@ def main():
                     argv += ['-o', output]
                     spec = dict(argv=argv, cwd=str(capture), output=output,
                                 timeout=args.link_timeout, log=str(directory / f'{name}-link.log'))
+                    if args.time_trace:
+                        spec['time_trace'] = True
                     (directory / f'{name}-command.txt').write_text(f'cd {shlex.quote(str(capture))}\n{shlex.join(argv)}\n')
                     try:
                         measure(spec, output_sizes)  # Correctness and sizing, outside timing samples.
