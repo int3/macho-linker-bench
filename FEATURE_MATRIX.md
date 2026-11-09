@@ -6,20 +6,20 @@ the build configuration described in [CAPTURES.md](CAPTURES.md). For the kind
 of work each workload stresses, see "What the workloads cover" in the
 [README](README.md).
 
-| Workload | Build | Output | Dead stripping | ICF | Order file | LTO | Exports | Fixups | ObjC selector stubs | Other |
-| --- | --- | --- | :-: | :-: | :-: | :-: | --- | --- | :-: | --- |
-| `rust-release` | Cargo `--release` | executable | ✓ | | | | | bind opcodes | | |
-| `rust-debug` | Cargo debug | executable | ✓ | | | | | bind opcodes | | |
-| `sourcekit-lsp` | SwiftPM release | executable | ✓ | | | | | chained | ✓ | |
-| `godot-ios` | release export | executable | ✓ | | | ✓ | | chained | ✓ | |
-| `firefox-ios` | Xcode `Fennec` configuration | executable | ✓ | `none` | | ✓ | `-export_dynamic` | chained | ✓ | `-ObjC` |
-| `llvm-libllvm` | CMake `RelWithDebInfo` | dylib | ✓ | | | | | chained | | `-all_load` |
-| `llvm-clang` | CMake `RelWithDebInfo` | executable | | | | | `-export_dynamic` | chained | | |
-| `telegram` | Xcode Release | executable | | | | | | bind opcodes, `-O 3` | ✓ | `-ObjC` |
-| `firefox-macos` | `--enable-optimize` developer build | dylib | ✓ | | | | exported-symbols list | bind opcodes | ✓ | |
-| `chromium-macos-sym0`/`sym1`/`sym2` | GN `is_debug=false` | dylib | ✓ | `all` | ✓ | | exported-symbols list | chained | ✓ | `-ObjC` |
-| `chromium-macos-debug-component` | GN `is_debug=true`, component | dylib | | | ✓ | | | chained | ✓ | `-ObjC` |
-| `chromium-ios-sym0`/`sym1` | GN `is_debug=false` | executable | ✓ | `all` | | | | chained (`-fixup_chains`) | ✓ | `-ObjC` |
+| Workload | Build | Output | Dead stripping | ICF | Order file | Exports | Fixups | ObjC selector stubs | Other |
+| --- | --- | --- | :-: | :-: | :-: | --- | --- | :-: | --- |
+| `rust-release` | Cargo `--release` | executable | ✓ | | | | bind opcodes | | |
+| `rust-debug` | Cargo debug | executable | ✓ | | | | bind opcodes | | |
+| `sourcekit-lsp` | SwiftPM release | executable | ✓ | | | | chained | ✓ | |
+| `godot-ios` | release export | executable | ✓ | | | | chained | ✓ | |
+| `firefox-ios` | Xcode `Fennec` configuration | executable | ✓ | `none` | | `-export_dynamic` | chained | ✓ | `-ObjC` |
+| `llvm-libllvm` | CMake `RelWithDebInfo` | dylib | ✓ | | | | chained | | `-all_load` |
+| `llvm-clang` | CMake `RelWithDebInfo` | executable | | | | `-export_dynamic` | chained | | |
+| `telegram` | Xcode Release | executable | | | | | bind opcodes, `-O 3` | ✓ | `-ObjC` |
+| `firefox-macos` | `--enable-optimize` developer build | dylib | ✓ | | | exported-symbols list | bind opcodes | ✓ | |
+| `chromium-macos-sym0`/`sym1`/`sym2` | GN `is_debug=false` | dylib | ✓ | `all` | ✓ | exported-symbols list | chained | ✓ | `-ObjC` |
+| `chromium-macos-debug-component` | GN `is_debug=true`, component | dylib | | | ✓ | | chained | ✓ | `-ObjC` |
+| `chromium-ios-sym0`/`sym1` | GN `is_debug=false` | executable | ✓ | `all` | | | chained (`-fixup_chains`) | ✓ | `-ObjC` |
 
 Notes on the columns:
 
@@ -27,8 +27,6 @@ Notes on the columns:
   liveness at all.
 - **ICF** is the `--icf=` mode. An empty cell means the default, which is no
   folding.
-- **LTO** means the link includes bitcode and passes LTO options
-  (`-object_path_lto`).
 - **Exports**: `-export_dynamic` makes every external symbol a dead-stripping
   root. An exported-symbols list restricts the exports to the listed symbols.
 - **Fixups**: chained fixups are the default for macOS 13 and later and for
@@ -42,10 +40,11 @@ Notes on the columns:
 
 Gaps:
 
+- **LTO.** No workload's inputs contain bitcode. Xcode passes
+  `-object_path_lto` to every link, but that alone doesn't mean LTO runs.
 - **Shipping configurations.** None of the workloads is a project's official
   release configuration, such as Chromium's `is_official_build` (ThinLTO and
-  PGO) or Firefox's official builds. So LTO appears only in two small links,
-  `godot-ios` and `firefox-ios`.
+  PGO) or Firefox's official builds.
 - **ICF and order files on non-Chromium links.** Only Chromium uses them.
 - **Debug builds.** `rust-debug` and `chromium-macos-debug-component` are the
   only ones.
