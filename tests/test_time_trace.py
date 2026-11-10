@@ -41,6 +41,24 @@ class TimeTrace(unittest.TestCase):
                 bench.measure(spec)
             self.assertFalse(list(Path(root).glob('linkerbench-trace-*')))
 
+    def test_measure_keeps_lto_cache_between_links(self):
+        with tempfile.TemporaryDirectory() as root:
+            output = Path(root) / 'output'
+            cache = Path(root) / 'cache'
+            cache.mkdir()
+            # LLD keeps the last -cache_path_lto; the captured one comes first.
+            script = ('import pathlib, sys; '
+                      'i = len(sys.argv) - 1 - sys.argv[::-1].index("-cache_path_lto"); '
+                      'cache = pathlib.Path(sys.argv[i + 1]); '
+                      'cache.joinpath(str(len(list(cache.iterdir())))).write_bytes(b"x"); '
+                      'pathlib.Path("output").write_bytes(b"abc")')
+            spec = dict(output=str(output), log=str(Path(root) / 'log'), cwd=root, timeout=10,
+                        argv=[sys.executable, '-c', script, '-cache_path_lto', '/build/cache',
+                              '-cache_path_lto', str(cache), '-o', str(output)])
+            for _ in range(2):
+                bench.measure(spec)
+            self.assertEqual(sorted(p.name for p in cache.iterdir()), ['0', '1'])
+
     def samples(self):
         raw = io.StringIO()
         metrics = bench.trace_metrics(FIXTURE)

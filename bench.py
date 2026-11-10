@@ -821,6 +821,18 @@ def main():
                                 timeout=args.link_timeout, log=str(directory / f'{name}-link.log'))
                     if args.time_trace:
                         spec['time_trace'] = True
+                    if '-cache_path_lto' in tokens:
+                        # The captured cache path is the build's own directory. A later
+                        # -cache_path_lto wins, so each linker gets its own cache, filled by
+                        # the untimed link below: samples then measure LLD's work around a
+                        # warm ThinLTO backend, as in an incremental relink. Caches are
+                        # per linker: the key covers the LLVM version but not local changes,
+                        # and covers the revision only when the build records one. They can
+                        # exceed the RAM disk, so they live in the probe scratch, which is
+                        # removed with the workload.
+                        cache = Path(scratch) / f'lto-cache-{name}'
+                        cache.mkdir()
+                        argv[-2:-2] = ['-cache_path_lto', str(cache)]
                     (directory / f'{name}-command.txt').write_text(f'cd {shlex.quote(str(capture))}\n{shlex.join(argv)}\n')
                     try:
                         measure(spec, output_sizes)  # Correctness and sizing, outside timing samples.

@@ -79,6 +79,18 @@ the machine's state, such as thermals, background work or the page cache,
 then affects every linker equally instead of whichever happened to run
 last.
 
+ThinLTO workloads are timed with a warm cache, as in a relink after an
+incremental build. Their captured responses name the build's own
+`-cache_path_lto` directory; the runner adds a later `-cache_path_lto` that
+points each linker at its own empty directory, which the correctness link
+fills. Warmups and samples then reuse the cached backend objects, so the
+times cover LLD's own work (bitcode reading, symbol resolution, the thin
+link, cache lookups and the native link) rather than LLVM code generation.
+Each linker has its own cache because the cache key doesn't always
+distinguish two builds of the same LLVM version. The caches live in the
+untimed scratch directory on disk (clang's is about 13 GB) and are deleted
+with the workload.
+
 Timed links write to an automatically created APFS RAM disk on macOS, or
 `/dev/shm` tmpfs on Linux. Creating output files on a disk filesystem can
 occasionally stall; a RAM disk measures the linker rather than the disk.
