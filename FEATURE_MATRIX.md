@@ -6,20 +6,24 @@ the build configuration described in [CAPTURES.md](CAPTURES.md). For the kind
 of work each workload stresses, see "What the workloads cover" in the
 [README](README.md).
 
-| Workload | Build | Output | Dead stripping | ICF | Order file | Exports | Fixups | ObjC selector stubs | Other |
-| --- | --- | --- | :-: | :-: | :-: | --- | --- | :-: | --- |
-| `rust-release` | Cargo `--release` | executable | ✓ | | | | bind opcodes | | |
-| `rust-debug` | Cargo debug | executable | ✓ | | | | bind opcodes | | |
-| `sourcekit-lsp` | SwiftPM release | executable | ✓ | | | | chained | ✓ | |
-| `godot-ios` | release export | executable | ✓ | | | | chained | ✓ | |
-| `firefox-ios` | Xcode `Fennec` configuration | executable | ✓ | `none` | | `-export_dynamic` | chained | ✓ | `-ObjC` |
-| `llvm-libllvm` | CMake `RelWithDebInfo` | dylib | ✓ | | | | chained | | `-all_load` |
-| `llvm-clang` | CMake `RelWithDebInfo` | executable | | | | `-export_dynamic` | chained | | |
-| `telegram` | Xcode Release | executable | | | | | bind opcodes, `-O 3` | ✓ | `-ObjC` |
-| `firefox-macos` | `--enable-optimize` developer build | dylib | ✓ | | | exported-symbols list | bind opcodes | ✓ | |
-| `chromium-macos-sym0`/`sym1`/`sym2` | GN `is_debug=false` | dylib | ✓ | `all` | ✓ | exported-symbols list | chained | ✓ | `-ObjC` |
-| `chromium-macos-debug-component` | GN `is_debug=true`, component | dylib | | | ✓ | | chained | ✓ | `-ObjC` |
-| `chromium-ios-sym0`/`sym1` | GN `is_debug=false` | executable | ✓ | `all` | | | chained (`-fixup_chains`) | ✓ | `-ObjC` |
+| Workload | Build | Output | Dead stripping | ICF | Order file | Exports | Fixups | ObjC selector stubs | LTO | Other |
+| --- | --- | --- | :-: | :-: | :-: | --- | --- | :-: | --- | --- |
+| `rust-release` | Cargo `--release` | executable | ✓ | | | | bind opcodes | | none | |
+| `rust-release-thinlto` | Cargo `--release` | executable | ✓ | | | | bind opcodes | | ThinLTO | |
+| `rust-debug` | Cargo debug | executable | ✓ | | | | bind opcodes | | none | |
+| `sourcekit-lsp` | SwiftPM release | executable | ✓ | | | | chained | ✓ | none | |
+| `godot-ios` | release export | executable | ✓ | | | | chained | ✓ | none | |
+| `godot-ios-thinlto` | release export | executable | ✓ | | | | chained | ✓ | ThinLTO | |
+| `firefox-ios` | Xcode `Fennec` configuration | executable | ✓ | `none` | | `-export_dynamic` | chained | ✓ | none | `-ObjC` |
+| `llvm-libllvm` | CMake `RelWithDebInfo` | dylib | ✓ | | | | chained | | none | `-all_load` |
+| `llvm-libllvm-thinlto` | CMake `RelWithDebInfo` | dylib | ✓ | | | | chained | | ThinLTO | `-all_load` |
+| `llvm-clang` | CMake `RelWithDebInfo` | executable | | | | `-export_dynamic` | chained | | none | |
+| `llvm-clang-thinlto` | CMake `RelWithDebInfo` | executable | | | | `-export_dynamic` | chained | | ThinLTO | |
+| `telegram` | Xcode Release | executable | | | | | bind opcodes, `-O 3` | ✓ | none | `-ObjC` |
+| `firefox-macos` | `--enable-optimize` developer build | dylib | ✓ | | | exported-symbols list | bind opcodes | ✓ | none | |
+| `chromium-macos-sym0`/`sym1`/`sym2` | GN `is_debug=false` | dylib | ✓ | `all` | ✓ | exported-symbols list | chained | ✓ | none | `-ObjC` |
+| `chromium-macos-debug-component` | GN `is_debug=true`, component | dylib | | | ✓ | | chained | ✓ | none | `-ObjC` |
+| `chromium-ios-sym0`/`sym1` | GN `is_debug=false` | executable | ✓ | `all` | | | chained (`-fixup_chains`) | ✓ | none | `-ObjC` |
 
 Notes on the columns:
 
@@ -40,8 +44,10 @@ Notes on the columns:
 
 Gaps:
 
-- **LTO.** No workload's inputs contain bitcode. Xcode passes
-  `-object_path_lto` to every link, but that alone doesn't mean LTO runs.
+- **LTO.** Four workloads contain ThinLTO bitcode; full LTO is not covered.
+  The other workloads have native inputs. `-object_path_lto` alone does not
+  establish that a link uses LTO. ThinLTO timings use each linker's own warm
+  cache (see [BENCHMARKING.md](BENCHMARKING.md)).
 - **Shipping configurations.** None of the workloads is a project's official
   release configuration, such as Chromium's `is_official_build` (ThinLTO and
   PGO) or Firefox's official builds.

@@ -13,11 +13,15 @@ with the [README](README.md).
   [llvm-clang](#llvm-clang), [telegram](#telegram),
   [firefox-macos](#firefox-macos), [chromium-macos-sym0/1/2](#chromium-macos),
   [chromium-macos-debug-component](#chromium-macos-debug-component),
-  [chromium-ios-sym0/1](#chromium-ios)
+  [chromium-ios-sym0/1](#chromium-ios),
+  [godot-ios-thinlto](#godot-ios-thinlto),
+  [rust-release-thinlto](#rust-release-thinlto),
+  [llvm-libllvm-thinlto](#llvm-libllvm-thinlto),
+  [llvm-clang-thinlto](#llvm-clang-thinlto)
 
 ## Build environment
 
-All fifteen were built on one Apple M4 Mac mini (10 cores, 16 GB) running
+All nineteen were built on one Apple M4 Mac mini (10 cores, 16 GB) running
 macOS 26.3 (25D125), with Xcode 26.6 (17F113) and the MacOSX26.5 and
 iPhoneOS26.5 SDKs. Each recipe checked out pinned source and ran the
 project's own build. A small wrapper sat in front of the final link of the
@@ -26,11 +30,27 @@ target being captured and added `--reproduce=NAME.repro.tar` to its
 Nothing was rewritten afterwards: every input is byte-for-byte what the
 build produced, and build paths are preserved as captured.
 
-How LLD was selected depended on the build system: Cargo through an Xcode
+How LLD was selected depended on the build system: Cargo through a selected
 Clang driver with `-fuse-ld=lld`, SwiftPM with `-use-ld=lld`, and CMake,
 Xcode and GN through the wrapper. Each capture's `version.txt` records the
-LLD revision that wrote it: one of three upstream LLVM revisions, listed
+LLD revision that wrote it: one of the upstream LLVM revisions listed
 per workload below.
+
+The four `-thinlto` workloads use the **LLVM 23.1.5 release clang**
+(source revision `392dfff97d29b59d77e5cac6d4b6ef2585fe7117`) with ThinLTO:
+CMake `LLVM_ENABLE_LTO=Thin`, SCons `lto=thin`, Xcode `LLVM_LTO=YES_THIN`
+with that clang, and rustc `-Clinker-plugin-lto`. LLVM's `llvm-ar`,
+`llvm-ranlib` and `llvm-libtool-darwin` handle the bitcode archives.
+C++ builds select the platform's libc++ headers with `-nostdinc++ -isystem`.
+Rust's small linker adapter translates its `-plugin-opt=` options into
+ld64.lld spellings. These captures were written by LLD 24.0.0 at
+`d688679f6fda46b69b1987908889c501241927e6`. No thread count is embedded in
+the four responses.
+
+The two LLVM ThinLTO captures keep CMake's own `-cache_path_lto` option.
+The runner gives each linker its own warm cache, overriding the captured
+cache path; see [BENCHMARKING.md](BENCHMARKING.md) and
+[commit 2796f1b](https://github.com/int3/macho-linker-bench/commit/2796f1b).
 
 Other toolchain versions: Rust 1.98.0 (Homebrew) for rust-analyzer; Swift
 6.3.3 (Xcode) for SourceKit-LSP; Rust 1.94.0, Node 22.22.0, npm 10.9.4 and
@@ -56,8 +76,10 @@ matter where the capture is extracted or whose machine it is on.
 
 **Which LLD.** Upstream LLD at
 [`3d7d2e95`](https://github.com/llvm/llvm-project/commit/3d7d2e95a1af68dd41ec042ea6bf9b14de65afca)
-links all fifteen. Older releases don't: LLD 18 handles the Rust and Godot
-captures, the LLVM captures need LLD 20 for `-no_warn_duplicate_libraries`,
+links the original fifteen. The four ThinLTO captures were produced with
+LLD `d688679f6fda46b69b1987908889c501241927e6`; they have not been
+benchmarked for this publication. For the original captures, older
+releases have limited coverage: LLD 18 handles Rust and Godot, the LLVM captures need LLD 20 for `-no_warn_duplicate_libraries`,
 and Telegram and Chromium use options newer than LLD 20. To build that
 revision:
 
@@ -85,7 +107,7 @@ diagnostic options. Run it with Xcode 26.6 selected:
 xcrun ld @apple-response.txt -o /some/output/path
 ```
 
-This works for all fifteen. Apple's output is not expected to match LLD's
+This was checked for the original fifteen. Apple's output is not expected to match LLD's
 byte for byte.
 
 **When comparing outputs**, keep both the capture directory and the output
@@ -103,7 +125,7 @@ release](https://github.com/int3/macho-linker-bench/releases/tag/v1). Each
 `.repro.tar` was compressed with `zstd -6`, without `--long`, so plain
 `zstd -d` decompresses it. Files over 1.9 GiB are split into numbered
 `.part-aa`, `.part-ab`, ... pieces to stay under GitHub's 2 GiB asset limit.
-In total that's 22 assets, 23.4 GB, from 129 GB of captures.
+In total that's 31 assets, 33.85 GB, from 172.04 GB of captures.
 
 [`manifest.tsv`](manifest.tsv) lists every part in concatenation order, with
 sizes and SHA-256s for the part, the joined `.zst` and the original tar.
@@ -379,3 +401,101 @@ recreated before linking (see [Replaying](#replaying)).
 | Input | 8,025 objects; 905 archives (9,160 members); 2 dylibs; 109 `.tbd` |
 | Flags | `-ObjC`, `-dead_strip`, `--icf=all`, `-fatal_warnings` |
 | Captured with | LLD `c1b661fde124` |
+
+### godot-ios-thinlto
+
+The same Platformer demo and Godot source as `godot-ios`, compiled with LLVM
+23.1.5 release clang and ThinLTO. SCons builds the iOS templates with
+`lto=thin`; the editor exports the demo, and Xcode links the release app
+with `CC=clang`, `CXX=clang++` selecting that release and `LLVM_LTO=YES_THIN`.
+The selected toolchain also supplies the archive tools. Build parallelism is
+eight jobs. The final response has `-object_path_lto platformer_lto.o` and
+no LTO cache argument.
+
+| | |
+| --- | --- |
+| Source | Godot 4.7.2-stable `ed1daf0bf001b61586d9930840f2f1394092c079`; demos `6ad6167e0577fe3622c18546138f456b107ce93c`; SCons `ff783e717edcd057df23f3d64d02961c64e5c898`; MoltenVK iOS 1.4.2 |
+| Build | SCons `platform=ios target=template_release lto=thin`; Xcode Release, `LLVM_LTO=YES_THIN` |
+| Output | `platformer`, arm64 iOS 15.0+; 88,711,352 bytes |
+| Input | 2,355 bitcode and 195 native Mach-O inputs, including members of 8 archives; 468,679 symbol names |
+| Output symbols | 189,418 names; 12,674 dotted; 9,999 containing `.llvm.` |
+| Flags | `-dead_strip`, `-dependency_info`, `-object_path_lto` |
+| Captured with | LLD `d688679f6fda` |
+| Raw / download | 362,903,040 / 121,449,962 bytes (1 part) |
+
+### rust-release-thinlto
+
+rust-analyzer's release executable, built with `cargo build --locked
+--package rust-analyzer --bin rust-analyzer --release`, eight Cargo jobs,
+and `RUSTFLAGS=-Clinker-plugin-lto`. Native C/C++ dependencies use LLVM
+23.1.5 release clang with `-flto=thin`. Rust/Cargo is Homebrew 1.98.0
+(rustc `88d9e12ae178fab0fb5cc050a94da85685d449ea`, LLVM 22.1.8).
+`MACOSX_DEPLOYMENT_TARGET` is unset, so rustc selects macOS 11.0.
+
+A small adapter translates `-plugin-opt=O[0-3]` to `--lto-O[0-3]` and
+`-plugin-opt=mcpu=VALUE` to `-mcpu VALUE`, rejecting unknown plugin options.
+The captured response has `--lto-O3 -mcpu apple-m1` and no cache option.
+The selected Rust runtime contains objects with a newer deployment target;
+the native product was checked on macOS 26.3, which does not establish
+runtime compatibility on macOS 11.
+
+| | |
+| --- | --- |
+| Source | rust-analyzer `9074e9b4c6bc31d7986ccf4e22d18af70e5508da`; committed Cargo.lock SHA-256 `c79cc182e666d99d26f70d4c1ed569495a9597cd2ebb96c361853faf05785304` |
+| Output | `rust-analyzer`, arm64, macOS 11.0 link target; 50,299,792-byte native build product |
+| Input | 697 bitcode and 806 native Mach-O inputs, including members of 207 archives; 237,094 symbol names |
+| Output symbols | Fixed-basename replay: 88,337 names; 18,652 dotted; 18,648 containing `.llvm.` |
+| Flags | `-dead_strip`, `--lto-O3`, `-mcpu apple-m1`; bind opcodes |
+| Captured with | LLD `d688679f6fda` |
+| Raw / download | 515,612,672 / 122,385,687 bytes (1 part) |
+
+### llvm-libllvm-thinlto
+
+The LLVM dylib from the same source pin and configuration as `llvm-libllvm`,
+compiled with LLVM 23.1.5 release clang and `LLVM_ENABLE_LTO=Thin`.
+CMake uses Ninja, `RelWithDebInfo`, arm64, macOS 13.0, all targets,
+`LLVM_ENABLE_PROJECTS=clang`, `LLVM_ENABLE_EH=ON`, `LLVM_ENABLE_RTTI=ON`,
+`LLVM_BUILD_LLVM_DYLIB=ON` and `LLVM_LINK_LLVM_DYLIB=OFF`. Tests, examples,
+benchmarks and docs are excluded. The targets were built in sequence with
+`ninja -C build -j8 LLVM` and `ninja -C build -j8 clang`, with
+`LLVM_PARALLEL_LINK_JOBS=1`.
+
+CMake's own `-cache_path_lto .../build/lto.cache` remains in the response.
+The benchmark runner overrides it with a separate warm cache for each
+linker, as described in [BENCHMARKING.md](BENCHMARKING.md).
+
+| | |
+| --- | --- |
+| Source | llvm-project `b615ebdd35cc1c13d722c81ecf52af990ad29c6a` |
+| Output | `libLLVM.24.0git.dylib`, arm64 macOS 13.0+; 168,264,384 bytes |
+| Input | 2,961 bitcode and 282 native Mach-O inputs, including members of 199 archives; 495,234 symbol names |
+| Output symbols | 215,790 names; 17,006 dotted; 16,291 containing `.llvm.` |
+| Debug map | 367,750 STAB entries |
+| Flags | `-dylib`, `-all_load`, `-dead_strip`, `-cache_path_lto` |
+| Captured with | LLD `d688679f6fda` |
+| Raw / download | 17,272,815,616 / 4,244,136,419 bytes (3 parts) |
+
+### llvm-clang-thinlto
+
+The Clang executable from the same ThinLTO CMake/Ninja build as
+`llvm-libllvm-thinlto`. It links LLVM and Clang archives statically with
+`LLVM_LINK_LLVM_DYLIB=OFF`. Its response also keeps CMake's
+`-cache_path_lto`; the benchmark runner assigns each linker its own warm
+cache (see [BENCHMARKING.md](BENCHMARKING.md)).
+
+| | |
+| --- | --- |
+| Source | llvm-project `b615ebdd35cc1c13d722c81ecf52af990ad29c6a` |
+| Build | LLVM 23.1.5 release clang; `LLVM_ENABLE_LTO=Thin`; other settings as llvm-libllvm-thinlto |
+| Output | `clang-24`, arm64 macOS 13.0+; 222,363,072 bytes |
+| Input | 3,558 bitcode and 282 native Mach-O inputs, including members of 197 archives; 724,672 symbol names |
+| Output symbols | Earlier build: 313,144 names; 29,575 dotted; 28,853 containing `.llvm.`; replacement output not recounted |
+| Debug map | Earlier build: 532,035 STAB entries |
+| Flags | `-export_dynamic`, `-cache_path_lto` |
+| Captured with | LLD `d688679f6fda` |
+| Raw / download | 24,567,500,800 / 5,984,559,982 bytes (4 parts) |
+
+ThinLTO input counts include standalone objects and archive members, excluding
+dylibs and metadata. Symbol counts include local, defined and undefined names,
+excluding STAB debug records. Counts come from the build records; publication
+checks only archive hashes and sizes, without running new links.

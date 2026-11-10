@@ -11,7 +11,7 @@ cargo install cbdr
 ./bench.py --linker /path/to/ld64.lld --apple
 ```
 
-Without `--workloads`, this runs all 15 workloads in `manifest.tsv`, smallest
+Without `--workloads`, this runs all 19 workloads in `manifest.tsv`, smallest
 first. Each missing capture is fetched and extracted under `corpora.noindex/`, linked,
 and then deleted. Downloaded parts stay there as a cache. Extractions that
 were already there are always preserved; `--keep` also preserves new ones.
@@ -37,18 +37,18 @@ measurement settings requires a new output directory.
 
 ## Disk and time
 
-All 15 captures download **23.37 GB**. Streaming extraction verifies every
+All 19 captures download **33.85 GB**. Streaming extraction verifies every
 part, the combined compressed stream and the raw tar's hash and byte count.
 It never writes a combined compressed file or a raw tar. Only one new
 extraction is needed at a time.
 
-Measured capture sizes give these peak input-storage requirements (decimal
-GB, excluding linked outputs and reports):
+Capture sizes give these peak input-storage requirements (decimal GB,
+excluding linked outputs, reports and per-linker ThinLTO caches):
 
 | Selection | Download | Peak with cache | Peak with `--no-cache` |
 | --- | --- | --- | --- |
-| All 15 | 23.37 GB | 75.40 GB | 61.02 GB |
-| `--skip-large` (13) | 11.27 GB | 30.14 GB | 22.17 GB |
+| All 19 | 33.85 GB | 85.81 GB | 60.96 GB |
+| `--skip-large` (17) | 21.75 GB | 46.31 GB | 30.55 GB |
 
 The preflight estimates the extra space needed on the corpus disk and
 refuses if it will not fit; `--ignore-disk-space` overrides it. `--keep`
@@ -60,8 +60,9 @@ The two largest links need more memory than their inputs suggest:
 and says so, since their times would measure the disk rather than the linker.
 `--include-large` runs them anyway; `--skip-large` always leaves them out.
 
-A full run with two linkers took about 40 minutes on a 16 GB M4 Mac mini
-(13 workloads), plus the time to download and extract.
+The original workload set with two linkers took about 40 minutes on a
+16 GB M4 Mac mini (13 workloads), plus downloads and extraction. This
+excludes the four ThinLTO workloads, whose run time has not been measured.
 
 For a separate fetch, use `./fetch.sh rust-release --extract`. It retains
 verified parts; `--keep-tar` additionally saves the original capture tarball.
@@ -80,11 +81,11 @@ then affects every linker equally instead of whichever happened to run
 last.
 
 ThinLTO workloads are timed with a warm cache, as in a relink after an
-incremental build. Their captured responses name the build's own
+incremental build. The LLVM captures' responses name the build's own
 `-cache_path_lto` directory; the runner adds a later `-cache_path_lto` that
-points each linker at its own empty directory, which the correctness link
-fills. Warmups and samples then reuse the cached backend objects, so the
-times cover LLD's own work (bitcode reading, symbol resolution, the thin
+points each linker at its own empty directory, including for Godot and Rust,
+whose responses have no cache path. The correctness link fills each cache.
+Warmups and samples then reuse the cached backend objects, so the times cover LLD's own work (bitcode reading, symbol resolution, the thin
 link, cache lookups and the native link) rather than LLVM code generation.
 Each linker has its own cache because the cache key doesn't always
 distinguish two builds of the same LLVM version. The caches live in the

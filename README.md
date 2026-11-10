@@ -7,7 +7,7 @@ build of every app pays that cost, which makes linker speed one of the few
 things that shortens everyone's edit-build-run loop at once.
 
 Mach-O LinkerBench measures it on the links people actually wait for. It is
-fifteen final links of real applications — Chromium, Firefox, Telegram,
+nineteen final links of real applications — Chromium, Firefox, Telegram,
 clang, rust-analyzer and more — each captured from its native build on a Mac
 with every input file and the exact command line. Point it at a linker and
 it replays all of them and reports how long each one took, with error bars.
@@ -37,6 +37,13 @@ at least 20 interleaved runs; every 95% confidence interval is within
 | `chromium-macos-debug-component` | needs 32 GB | needs 32 GB | — | 14.6 s |
 | `chromium-ios-sym0` | 898 ms | 625 ms | 1.44× | 1.43 s |
 | `chromium-ios-sym1` | 1.10 s | 777 ms | 1.41× | 1.68 s |
+| `godot-ios-thinlto` | not yet run | not yet run | — | not yet run |
+| `rust-release-thinlto` | not yet run | not yet run | — | not yet run |
+| `llvm-libllvm-thinlto` | not yet run | not yet run | — | not yet run |
+| `llvm-clang-thinlto` | not yet run | not yet run | — | not yet run |
+
+The four ThinLTO workloads have not been benchmarked yet. Their warm cache
+method is described in [BENCHMARKING.md](BENCHMARKING.md).
 
 On the thirteen links that fit in the Mac mini's memory, LLD takes 1.1 to
 1.9 times as long as Apple's `ld`. The two largest links need more memory
@@ -90,11 +97,12 @@ memory for each workload:
 | llvm-clang | 453.1 ± 1.1 ms | 280.2 ± 1.1 ms (0.62×) |
 | ... | | |
 
-The full run downloads 23 GB and needs about 75 GB of free disk at its
-peak, because it keeps the downloads so that a second run doesn't fetch
-them again; with `--no-cache` the peak is about 61 GB. It takes about 40
-minutes on the Mac mini above. Links that need more memory than the machine
-has are skipped, since their times would measure swapping rather than the
+The original fifteen workloads download 23 GB and need about 75 GB of free
+disk at their peak, or about 61 GB with `--no-cache`. They took about 40
+minutes on the Mac mini above. The four ThinLTO captures add downloads and
+per-linker LTO caches; their full-run time has not been measured. Links that
+need more memory than the machine has are skipped, since their times would
+measure swapping rather than the
 linker. Linked outputs go to a RAM disk, and the corpora and
 linker binaries belong on an internal disk; the script warns if they are
 not.
@@ -127,6 +135,7 @@ work, and a linker that is fast on one can be slow on another.
 | Identical code folding and order files | `chromium-*` (`--icf=all`, Chromium's order file) |
 | Swift and Objective-C metadata | `sourcekit-lsp`, `firefox-ios`, `godot-ios`, `telegram` |
 | Export lists and dead stripping | `firefox-macos`, `chromium-macos-*`; dead stripping in most |
+| ThinLTO and warm backend cache reuse | `godot-ios-thinlto`, `rust-release-thinlto`, `llvm-libllvm-thinlto`, `llvm-clang-thinlto` |
 | Mixed-language links | `firefox-ios` (Swift, Objective-C, Rust), `firefox-macos` (C++, Rust) |
 
 [CAPTURES.md](CAPTURES.md) describes each capture: the source revision,
