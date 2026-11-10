@@ -821,11 +821,12 @@ def main():
                                 timeout=args.link_timeout, log=str(directory / f'{name}-link.log'))
                     if args.time_trace:
                         spec['time_trace'] = True
-                    if '-cache_path_lto' in tokens:
-                        # The captured cache path is the build's own directory. A later
-                        # -cache_path_lto wins, so each linker gets its own cache, filled by
-                        # the untimed link below: samples then measure LLD's work around a
-                        # warm ThinLTO backend, as in an incremental relink. Caches are
+                    if 'lld' in versions[name].lower() and name != 'apple':
+                        # Each linker gets its own ThinLTO cache, filled by the untimed link
+                        # below: samples then measure the linker's work around a warm
+                        # backend, as in an incremental relink. Some captures name the
+                        # build's own cache directory; a later -cache_path_lto wins. Without
+                        # LTO inputs the option has no effect. Caches are
                         # per linker: the key covers the LLVM version but not local changes,
                         # and covers the revision only when the build records one. They can
                         # exceed the RAM disk, so they live in the probe scratch, which is

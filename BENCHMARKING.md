@@ -81,12 +81,13 @@ then affects every linker equally instead of whichever happened to run
 last.
 
 ThinLTO workloads are timed with a warm cache, as in a relink after an
-incremental build. The LLVM captures' responses name the build's own
-`-cache_path_lto` directory; the runner adds a later `-cache_path_lto` that
-points each linker at its own empty directory, including for Godot and Rust,
-whose responses have no cache path. The correctness link fills each cache.
-Warmups and samples then reuse the cached backend objects, so the times cover LLD's own work (bitcode reading, symbol resolution, the thin
-link, cache lookups and the native link) rather than LLVM code generation.
+incremental build. The runner adds `-cache_path_lto` to every LLD link,
+pointing each linker at its own empty directory, which the correctness link
+fills. Where a captured response names the build's own cache directory (the
+LLVM captures do), the later option wins; links without bitcode inputs ignore
+it. Warmups and samples then reuse the cached backend objects, so the times
+cover LLD's own work (bitcode reading, symbol resolution, the thin link,
+cache lookups and the native link) rather than LLVM code generation.
 Each linker has its own cache because the cache key doesn't always
 distinguish two builds of the same LLVM version. The caches live in the
 untimed scratch directory on disk (clang's is about 13 GB) and are deleted
